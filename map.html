@@ -62,6 +62,10 @@
         .search-input:focus { border-color: #2563eb; background-color: white; }
         .filter-row { display: flex; gap: 8px; margin-top: 8px; }
         .filter-select { flex: 1; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background-color: white; outline: none; cursor: pointer; }
+        .source-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1.5px solid #d1d5db; border-radius: 9999px; font-size: 12px; cursor: pointer; user-select: none; color: #6b7280; background: #f9fafb; transition: all 0.15s; }
+        .source-tag .dot { width: 8px; height: 8px; border-radius: 50%; opacity: 0.4; transition: opacity 0.15s; }
+        .source-tag.active { border-color: #374151; color: #1f2937; background: white; font-weight: 500; }
+        .source-tag.active .dot { opacity: 1; }
 
         /* 數據統計儀表板 */
         .stats-dashboard {
@@ -173,12 +177,11 @@
                     <option value="辦公">辦公室</option>
                     <option value="車位">車位</option>
                 </select>
-                <select id="filter-source" class="filter-select">
-                    <option value="">來源不限</option>
-                    <option value="open">窩的家/開放聯盟合作</option>
-                    <option value="internal">窩的家/店內合作</option>
-                    <option value="alliance">聯盟他店</option>
-                </select>
+                <div id="filter-source" class="flex gap-1 flex-wrap items-center">
+                    <label class="source-tag active" data-value="open"><input type="checkbox" checked hidden><span class="dot" style="background:#3a506b;"></span>開放聯盟</label>
+                    <label class="source-tag active" data-value="internal"><input type="checkbox" checked hidden><span class="dot" style="background:#7c8590;"></span>店內</label>
+                    <label class="source-tag active" data-value="alliance"><input type="checkbox" checked hidden><span class="dot" style="background:#9B0C23;"></span>聯盟他店</label>
+                </div>
             </div>
         </div>
 
@@ -273,7 +276,13 @@
             document.getElementById('search-input').addEventListener('input', () => applyFilters(true));
             document.getElementById('filter-room').addEventListener('change', () => applyFilters(true));
             document.getElementById('filter-type').addEventListener('change', () => applyFilters(true));
-            document.getElementById('filter-source').addEventListener('change', () => applyFilters(true));
+            document.querySelectorAll('.source-tag').forEach(tag => {
+                tag.addEventListener('click', () => {
+                    tag.classList.toggle('active');
+                    tag.querySelector('input').checked = tag.classList.contains('active');
+                    applyFilters(true);
+                });
+            });
         };
 
         function initMap() {
@@ -371,17 +380,22 @@
             const keyword = document.getElementById('search-input').value.toLowerCase();
             const roomFilter = document.getElementById('filter-room').value;
             const typeFilter = document.getElementById('filter-type').value;
-            const sourceFilter = document.getElementById('filter-source').value;
+            const activeSources = [...document.querySelectorAll('.source-tag.active')].map(t => t.dataset.value);
 
             // 合併自家 + 聯盟
             let allRecords = [...fetchedRecords, ...allianceRecords];
 
             filteredRecords = allRecords.filter(item => {
-                // 來源篩選
+                // 來源篩選（多選）
                 const sharing = item[EID.SHARING] || '';
-                if (sourceFilter === 'open' && (item._isAlliance || !sharing.includes('開放聯盟合作'))) return false;
-                if (sourceFilter === 'internal' && (item._isAlliance || !sharing.includes('團隊共享'))) return false;
-                if (sourceFilter === 'alliance' && !item._isAlliance) return false;
+                const isAlliance = item._isAlliance;
+                const isOpen = !isAlliance && sharing.includes('開放聯盟合作');
+                const isInternal = !isAlliance && sharing.includes('團隊共享');
+                const isAllianceItem = isAlliance;
+                if (isOpen && !activeSources.includes('open')) return false;
+                if (isInternal && !activeSources.includes('internal')) return false;
+                if (isAllianceItem && !activeSources.includes('alliance')) return false;
+                if (!isAlliance && !isOpen && !isInternal && !activeSources.includes('open') && !activeSources.includes('internal')) return false;
 
                 // 自家物件: 狀態為「下架」則不顯示
                 if (!item._isAlliance && item[EID.STATUS] === '下架') return false;
