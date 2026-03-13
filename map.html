@@ -379,8 +379,8 @@
             filteredRecords = allRecords.filter(item => {
                 // 來源篩選
                 const sharing = item[EID.SHARING] || '';
-                if (sourceFilter === 'open' && (item._isAlliance || sharing.includes('店內合作'))) return false;
-                if (sourceFilter === 'internal' && (item._isAlliance || !sharing.includes('店內合作'))) return false;
+                if (sourceFilter === 'open' && (item._isAlliance || !sharing.includes('開放聯盟合作'))) return false;
+                if (sourceFilter === 'internal' && (item._isAlliance || !sharing.includes('團隊共享'))) return false;
                 if (sourceFilter === 'alliance' && !item._isAlliance) return false;
 
                 // 自家物件: 狀態為「下架」則不顯示
@@ -426,7 +426,7 @@
                     const [lat, lng] = coord.split(',').map(Number);
                     const isAlliance = item._isAlliance;
                     const sharing = item[EID.SHARING] || '';
-                    const isInternal = !isAlliance && sharing.includes('店內合作');
+                    const isInternal = !isAlliance && sharing.includes('團隊共享');
                     const markerIcon = isAlliance ? MARKER_ALLIANCE : (isInternal ? MARKER_INTERNAL : MARKER_OWN);
                     const marker = new google.maps.Marker({
                         position: { lat, lng }, map: map,
