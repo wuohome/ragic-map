@@ -79,6 +79,60 @@
         .legend-item { display: flex; align-items: center; gap: 6px; }
         .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 3px rgba(0,0,0,0.3); }
 
+        /* ── 完整資料 Modal ── */
+        .btn-detail {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: #2563eb; color: white;
+            padding: 4px 8px; border-radius: 4px;
+            font-size: 12px; font-weight: 500;
+            border: none; cursor: pointer; transition: background 0.2s;
+        }
+        .btn-detail:hover { background: #1d4ed8; }
+        .detail-modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 9998;
+            background: rgba(0,0,0,0.5); justify-content: center; align-items: center;
+        }
+        .detail-modal-overlay.open { display: flex; }
+        .detail-modal {
+            background: white; border-radius: 12px; padding: 24px;
+            width: min(680px, 95vw); max-height: 85vh; overflow-y: auto;
+            position: relative; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .detail-modal h2 { font-size: 18px; font-weight: bold; color: #1f2937; margin-bottom: 4px; }
+        .detail-modal .modal-subtitle { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+        .detail-modal .modal-section { margin-bottom: 14px; }
+        .detail-modal .modal-section-title {
+            font-size: 11px; font-weight: bold; color: #9ca3af; letter-spacing: 0.05em;
+            text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 4px;
+        }
+        .detail-modal .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .detail-modal .field-item { font-size: 13px; color: #374151; }
+        .detail-modal .field-item .field-label { font-size: 11px; color: #9ca3af; margin-bottom: 2px; }
+        .detail-modal .field-item .field-value { color: #111827; }
+        .detail-modal .field-wide { grid-column: 1 / -1; }
+        .detail-modal .btn-close {
+            position: absolute; top: 16px; right: 16px;
+            background: #f3f4f6; border: none; border-radius: 50%;
+            width: 32px; height: 32px; cursor: pointer; font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            color: #6b7280;
+        }
+        .detail-modal .btn-close:hover { background: #e5e7eb; }
+        .detail-modal .ragic-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #f0f9ff; border: 1px solid #bfdbfe;
+            color: #2563eb; padding: 6px 12px; border-radius: 6px;
+            font-size: 12px; text-decoration: none; margin-top: 16px;
+        }
+        .detail-modal .ragic-link:hover { background: #dbeafe; }
+        .detail-modal .alliance-banner {
+            background: #9B0C23; color: white;
+            padding: 4px 10px; border-radius: 4px; font-size: 11px;
+            font-weight: bold; display: inline-flex; align-items: center;
+            gap: 4px; margin-bottom: 8px;
+        }
+
         @media (max-width: 768px) {
             body { flex-direction: column; }
             #sidebar { width: 100%; height: 0; overflow: hidden; order: 2; display: none; }
@@ -179,6 +233,14 @@
         </div>
     </div>
 
+    <!-- 完整資料 Modal -->
+    <div id="detail-modal-overlay" class="detail-modal-overlay" onclick="if(event.target===this)closeDetailModal()">
+        <div class="detail-modal" id="detail-modal">
+            <button class="btn-close" onclick="closeDetailModal()">✕</button>
+            <div id="detail-modal-content"></div>
+        </div>
+    </div>
+
     <script>
         const EID = {
             TITLE: "1000050", ADDR: "1000055", COORD: "1000759",
@@ -189,14 +251,16 @@
             DEV_PHONE: "1000252"
         };
 
-        const MAPS_KEY = "AIzaSyALdVJlv7IBxnqeShEbzIIWnV7WSjtRtZw";
-        const RAGIC_KEY = "VEZsOEwzYzVJdWdoWXRDM3ptS2YwTFA1M283aGxIUHM1ZjRORmNGbDNHNi9qSnVDNnlYWlhwUmJnMnJIWGo3RQ==";
-        const API_URL = "https://ap15.ragic.com/wuohome/property-data-kept/10";
-        const ALLIANCE_API_URL = "https://ap15.ragic.com/wuohome/property-data-kept/27";
+        const MAPS_KEY  = "AIzaSyALdVJlv7IBxnqeShEbzIIWnV7WSjtRtZw";
+        const WORKER_URL = "https://wuohome-ragic-proxy.wuohome.workers.dev";
+        // RAGIC_KEY removed — all Ragic calls now go through Worker proxy
+
+        // Alliance field IDs in sheet 27 (for modal display)
         const ALLIANCE_EID = {
             TITLE: "1001894", ADDR: "1001914", COORD: "1001931",
             PRICE: "1001896", LAYOUT: "1001895", USAGE: "1001930",
-            DEV: "1002008", PHONE: "1002012", SIZE: "1001980"
+            DEV: "1002008", PHONE: "1002012", SIZE: "1001980",
+            COMPANY: "1002009"
         };
 
         // 自訂地標 SVG
@@ -279,29 +343,32 @@
             fetchData();
         }
 
-        // ========== 聯盟資料載入（從 Ragic /27 表） ==========
+        // ========== 聯盟資料載入（走 Worker proxy → ap15 sheet27） ==========
         async function fetchAllianceData() {
             try {
-                const ts = Date.now();
-                const url = `${ALLIANCE_API_URL}?api&v=3&naming=EID&t=${ts}&filterId=103&APIKey=${encodeURIComponent(RAGIC_KEY)}`;
-                const resp = await fetch(url);
-                if (!resp.ok) { console.warn("聯盟資料載入失敗"); return; }
+                const resp = await fetch(`${WORKER_URL}/getAllianceProperties`);
+                if (!resp.ok) { console.warn("聯盟資料載入失敗", resp.status); return; }
                 const data = await resp.json();
-                allianceRecords = Object.entries(data).map(([id, item]) => ({
-                    id: `alliance-${id}`,
-                    _isAlliance: true,
-                    _allianceDev: item[ALLIANCE_EID.DEV] || '',
-                    _alliancePhone: item[ALLIANCE_EID.PHONE] || '',
-                    _allianceSize: item[ALLIANCE_EID.SIZE] || '',
-                    [EID.TITLE]: item[ALLIANCE_EID.TITLE] || '(未命名)',
-                    [EID.ADDR]: item[ALLIANCE_EID.ADDR] || '',
-                    [EID.COORD]: item[ALLIANCE_EID.COORD] || '',
-                    [EID.PRICE]: item[ALLIANCE_EID.PRICE] || '',
-                    [EID.LAYOUT]: item[ALLIANCE_EID.LAYOUT] || '',
-                    [EID.USAGE]: item[ALLIANCE_EID.USAGE] || '',
-                    [EID.STATUS]: '',
-                    [EID.LINK_591]: ''
-                }));
+                allianceRecords = Object.entries(data)
+                    .filter(([id]) => !id.startsWith('_'))
+                    .map(([id, item]) => ({
+                        id: `alliance-${id}`,
+                        _rawId: id,                           // preserve for Ragic deep-link
+                        _isAlliance: true,
+                        _allianceDev: item[ALLIANCE_EID.DEV] || '',
+                        _alliancePhone: item[ALLIANCE_EID.PHONE] || '',
+                        _allianceSize: item[ALLIANCE_EID.SIZE] || '',
+                        _allianceCompany: item[ALLIANCE_EID.COMPANY] || '',
+                        _rawAllianceItem: item,               // preserve for modal
+                        [EID.TITLE]: item[ALLIANCE_EID.TITLE] || '(未命名)',
+                        [EID.ADDR]: item[ALLIANCE_EID.ADDR] || '',
+                        [EID.COORD]: item[ALLIANCE_EID.COORD] || '',
+                        [EID.PRICE]: item[ALLIANCE_EID.PRICE] || '',
+                        [EID.LAYOUT]: item[ALLIANCE_EID.LAYOUT] || '',
+                        [EID.USAGE]: item[ALLIANCE_EID.USAGE] || '',
+                        [EID.STATUS]: item['1001890'] || '',
+                        [EID.LINK_591]: ''
+                    }));
                 console.log(`聯盟資料載入完成: ${allianceRecords.length} 筆`);
             } catch (e) {
                 console.warn("聯盟資料載入錯誤:", e);
@@ -314,19 +381,18 @@
             loading.style.display = 'flex';
 
             try {
-                const ts = new Date().getTime();
-                const fetchUrl = `${API_URL}?api&v=3&naming=EID&t=${ts}&filterId=103&APIKey=${encodeURIComponent(RAGIC_KEY)}`;
-
-                // 同時抓自家 + 聯盟資料
+                // 同時抓自家 + 聯盟資料（均走 Worker proxy）
                 const [resp] = await Promise.all([
-                    fetch(fetchUrl),
+                    fetch(`${WORKER_URL}/getOwnProperties`),
                     fetchAllianceData()
                 ]);
 
                 if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);
 
                 const data = await resp.json();
-                fetchedRecords = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+                fetchedRecords = Object.entries(data)
+                    .filter(([id]) => !id.startsWith('_'))
+                    .map(([id, val]) => ({ id, _rawId: id, ...val }));
 
                 // 更新計數
                 document.getElementById('own-count').innerText = fetchedRecords.length;
@@ -525,6 +591,9 @@
         }
 
         function createListItem(item, container, isNoCoord = false) {
+            // Store item for modal safe access (avoid inline JSON XSS)
+            window[`__infoItem_${item.id}`] = item;
+
             const div = document.createElement('div');
             const price = item[EID.PRICE] ? parseInt(item[EID.PRICE]).toLocaleString() : "面議";
             const isAlliance = item._isAlliance;
@@ -534,6 +603,7 @@
             const isShop = usage.includes('店');
             const agentsHtml = getAgentsHtml(item);
             const hasCoord = item[EID.COORD] && item[EID.COORD].includes(',') && !isNoCoord;
+            const safeId = CSS.escape(item.id);
 
             div.className = `property-card ${isNoCoord ? 'bg-red-50/30' : ''} ${isAlliance ? 'alliance-card' : ''}`;
             div.id = `card-${item.id}`;
@@ -563,7 +633,8 @@
                 ${agentsHtml}
                 <div class="card-footer">
                     <div class="card-price">$${price} <span class="price-unit">/月</span></div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2" style="flex-wrap:wrap;">
+                        <button class="btn-detail" onclick="event.stopPropagation(); openDetailModal('${item.id}')"><i class="fas fa-list-alt"></i> 完整資料</button>
                         ${hasCoord ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${item[EID.COORD]}" target="_blank" class="inline-flex items-center gap-1 bg-blue-600 text-white py-1 px-2.5 rounded text-xs font-bold transition hover:bg-blue-700" onclick="event.stopPropagation()" title="導航"><i class="fas fa-location-arrow"></i> 導航</a>` : ''}
                         ${!isAlliance ? `<a href="${link591}" target="_blank" class="btn-591 ${hasLink ? '' : 'btn-hidden'}" title="前往 591"><i class="fas fa-external-link-alt"></i> 591</a>` : ''}
                     </div>
@@ -578,6 +649,8 @@
             const hasLink = link591 && link591.startsWith('http');
             const [lat, lng] = item[EID.COORD].split(',');
             const agentsHtml = getAgentsHtml(item);
+            // Ensure item is registered for modal
+            window[`__infoItem_${item.id}`] = item;
 
             const allianceBanner = isAlliance
                 ? `<div style="background:#9B0C23; color:white; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:8px; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-handshake"></i> 聯盟他店</div>`
@@ -591,7 +664,8 @@
                     ${agentsHtml}
                     <div class="flex justify-between items-center mt-2 border-t pt-2">
                         <span class="text-red-600 font-bold text-lg">$${price}</span>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2" style="flex-wrap:wrap;">
+                            <button onclick="openDetailModal('${item.id}')" style="background:#2563eb;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;">完整資料</button>
                             ${(!isAlliance && hasLink) ? `<a href="${link591}" target="_blank" class="text-xs bg-orange-500 text-white px-2 py-1 rounded hover:bg-orange-600" style="text-decoration:none;">591</a>` : ''}
                             <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700" style="text-decoration:none;">導航</a>
                         </div>
@@ -651,6 +725,127 @@
             const el = document.getElementById('last-update-time');
             if(lastTime) el.innerText = `最後更新: ${lastTime}`;
         }
+
+        // ========== 完整資料 Modal ==========
+        // Own (sheet 10) field whitelist for modal display
+        const OWN_MODAL_FIELDS = [
+            { id: '1000061', label: '物件型態' },
+            { id: '1000062', label: '物件類別' },
+            { id: '1000060', label: '用途' },
+            { id: '1000063', label: '格局' },
+            { id: '1000059', label: '登記坪數', suffix: '坪' },
+            { id: '1000058', label: '主建坪數', suffix: '坪' },
+            { id: '1000215', label: '所在樓層', suffix: '樓' },
+            { id: '1000068', label: '總樓層', suffix: '樓' },
+            { id: '1000054', label: '屋齡', suffix: '年' },
+            { id: '1000231', label: '車位' },
+            { id: '1000087', label: '押金', prefix: '$', suffix: '元' },
+            { id: '1000079', label: '租金內含' },
+            { id: '1000070', label: '房屋現況' },
+            { id: '1000080', label: '電費' },
+            { id: '1000081', label: '水費' },
+            { id: '1000083', label: '瓦斯費' },
+            { id: '1000226', label: '第四台' },
+            { id: '1000242', label: '網路' },
+            { id: '1000219', label: '寵物' },
+            { id: '1000218', label: '吸菸' },
+            { id: '1000220', label: '入戶籍' },
+            { id: '1000221', label: '租屋補助' },
+            { id: '1000072', label: '特殊說明', wide: true },
+        ];
+
+        // Alliance (sheet 27) field whitelist
+        const ALLIANCE_MODAL_FIELDS = [
+            { id: '1001929', label: '物件型態' },
+            { id: '1001895', label: '格局' },
+            { id: '1001930', label: '用途' },
+            { id: '1001980', label: '坪數', suffix: '坪' },
+            { id: '1002009', label: '合作公司' },
+        ];
+
+        function openDetailModal(itemId) {
+            const item = window[`__infoItem_${itemId}`];
+            if (!item) return;
+            const overlay = document.getElementById('detail-modal-overlay');
+            const content = document.getElementById('detail-modal-content');
+
+            const isAlliance = item._isAlliance;
+            const price = item[EID.PRICE] ? parseInt(item[EID.PRICE]).toLocaleString() : '面議';
+            const link591 = item[EID.LINK_591];
+            const has591 = link591 && link591.startsWith('http');
+            // Ragic deep-link: both own (sheet 10) and alliance (sheet 27) use ap15
+            const sheetNum = isAlliance ? 27 : 10;
+            const ragicUrl = `https://ap15.ragic.com/wuohome/property-data-kept/${sheetNum}/${item._rawId}`;
+
+            let html = '';
+
+            // Alliance banner
+            if (isAlliance) {
+                html += `<div class="alliance-banner"><i class="fas fa-handshake"></i> 聯盟他店</div>`;
+            }
+
+            // Title + address
+            html += `<h2>${item[EID.TITLE] || '(未命名)'}</h2>`;
+            html += `<div class="modal-subtitle"><i class="fas fa-map-marker-alt mr-1"></i>${item[EID.ADDR] || ''}</div>`;
+
+            // Price
+            html += `<div class="modal-section">
+                <div class="modal-section-title">租金</div>
+                <div style="font-size:24px; font-weight:bold; color:#dc2626;">$${price} <span style="font-size:14px; color:#6b7280; font-weight:normal;">/月</span></div>
+            </div>`;
+
+            // Fields
+            const fields = isAlliance ? ALLIANCE_MODAL_FIELDS : OWN_MODAL_FIELDS;
+            let fieldRows = '';
+            fields.forEach(f => {
+                const raw = isAlliance
+                    ? (item._rawAllianceItem ? item._rawAllianceItem[f.id] : null)
+                    : item[f.id];
+                const val = Array.isArray(raw) ? raw.join('、') : (raw || '');
+                if (!val) return;
+                const display = (f.prefix || '') + val + (f.suffix || '');
+                const wideClass = f.wide ? ' field-wide' : '';
+                fieldRows += `<div class="field-item${wideClass}">
+                    <div class="field-label">${f.label}</div>
+                    <div class="field-value">${display}</div>
+                </div>`;
+            });
+            if (fieldRows) {
+                html += `<div class="modal-section">
+                    <div class="modal-section-title">物件資料</div>
+                    <div class="field-grid">${fieldRows}</div>
+                </div>`;
+            }
+
+            // Agents
+            const agentsHtml = getAgentsHtml(item);
+            if (agentsHtml) {
+                html += `<div class="modal-section">
+                    <div class="modal-section-title">聯絡業務</div>
+                    ${agentsHtml}
+                </div>`;
+            }
+
+            // Action links
+            let actionLinks = '';
+            if (has591) {
+                actionLinks += `<a href="${link591}" target="_blank" class="btn-591" style="margin-right:8px;"><i class="fas fa-external-link-alt"></i> 前往 591</a>`;
+            }
+            actionLinks += `<a href="${ragicUrl}" target="_blank" class="ragic-link">
+                <i class="fas fa-database"></i> 在 Ragic 開啟此案件 ↗
+            </a>`;
+            html += `<div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">${actionLinks}</div>`;
+
+            content.innerHTML = html;
+            overlay.classList.add('open');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal-overlay').classList.remove('open');
+        }
+
+        // Keyboard ESC to close
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetailModal(); });
 
     </script>
 </body>
