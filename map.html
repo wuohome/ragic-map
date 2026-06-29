@@ -419,6 +419,31 @@
             // 合併自家 + 聯盟
             let allRecords = [...fetchedRecords, ...allianceRecords];
 
+            // ── 地址去重（2026-06-29）──
+            // key = 正規化地址（不含租金：因同物件跨來源租金可能不同，例如 2026-05-29 大觀路事故）
+            // 樓層保留在 key 內（同棟不同樓是不同物件）
+            // fetchedRecords（自家）排在合併陣列前方，先遇到先保留 ← 自家優先意圖
+            // 空地址不參與去重，直接保留，避免空字串互相撞 key
+            const _normalizeAddr = (addr) => {
+                if (!addr) return '';
+                return addr
+                    .replace(/[\s　 ]/g, '')                                          // 去除半形/全形/NBSP 空白
+                    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))   // 全形數字 → 半形
+                    .replace(/（/g, '(').replace(/）/g, ')')                                    // 全形括號 → 半形
+                    .replace(/，/g, ',').replace(/。/g, '.')                                    // 常見全形標點統一
+                    .toLowerCase();
+            };
+            const _beforeDedup = allRecords.length;
+            const _addrSeen = new Set();
+            allRecords = allRecords.filter(item => {
+                const key = _normalizeAddr(item[EID.ADDR]);
+                if (!key) return true;                // 空地址：不去重，直接保留
+                if (_addrSeen.has(key)) return false; // 重複地址：跳過（自家已先保留，聯盟同地址在此被過濾）
+                _addrSeen.add(key);
+                return true;
+            });
+            console.log('[dedup] before', _beforeDedup, 'after', allRecords.length);
+
             filteredRecords = allRecords.filter(item => {
                 // 來源篩選（多選）
                 const sharing = item[EID.SHARING] || '';
