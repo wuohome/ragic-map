@@ -832,13 +832,13 @@
             if (map) renderListByMapBounds();
         }
 
-        // 排除離群點：以中位數為中心，約 45km 內視為主要區域（雙北）
+        // 排除離群點：以中位數為中心，約 20km 內視為主要區域（雙北）
         function mainAreaPoints(pts) {
             if (pts.length < 3) return pts;
             const med = (arr) => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
             const mLat = med(pts.map(p => p.lat));
             const mLng = med(pts.map(p => p.lng));
-            const kept = pts.filter(p => Math.abs(p.lat - mLat) <= 0.45 && Math.abs(p.lng - mLng) <= 0.45);
+            const kept = pts.filter(p => Math.abs(p.lat - mLat) <= 0.2 && Math.abs(p.lng - mLng) <= 0.2);
             return kept.length ? kept : pts;
         }
 
